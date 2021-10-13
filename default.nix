@@ -1,6 +1,17 @@
-{ pkgs, stdenv, lib, perlPackages, sources ? import ./nix/sources.nix }:
+{ pkgs, stdenv, lib, perlPackages, makeWrapper, sources ? import ./nix/sources.nix }:
 let
   gm = sources.gmusicbrowser;
+  perlDeps = with perlPackages; [
+    perl
+    Cairo
+    Pango
+    Gtk2
+    Glib
+    LocaleGettext
+    NetDBus
+    XMLTwig
+    XMLParser
+  ];
 in stdenv.mkDerivation {
   pname = "gmusicbrowser";
   src = gm.outPath;
@@ -10,22 +21,17 @@ in stdenv.mkDerivation {
   meta.description = gm.description;
   meta.license = lib.licenses.gpl3;
   meta.platforms = lib.platforms.all;
-  propagatedBuildInputs = with perlPackages; [
-    Gtk2
-    Glib
-    LocaleGettext
-    NetDBus
-    perl
-    pkgs.gettext
-  ];
-
-  buildPhase = "
-
-  ";
-  installPhase = ''
-    mkdir -p $out/bin
-    mkdir -p $out/src
-    cp -r $src/* $out/src/
-    ln -s $out/src/gmusicbrowser.pl $out/bin/gmusicbrowser
+  nativeBuildInputs = [ makeWrapper ];
+  buildInputs = with pkgs; [
+    pandoc
+    gettext
+    discount
+  ] ++ perlDeps;
+  preBuild = ''
+  substituteInPlace Makefile --replace usr $out
+  '';
+  postInstall = ''
+    wrapProgram "$out/bin/gmusicbrowser" \
+      --prefix PERL5LIB : ${perlPackages.makePerlPath perlDeps}
   '';
 }
