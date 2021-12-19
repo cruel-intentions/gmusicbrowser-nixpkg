@@ -1,37 +1,65 @@
-{ pkgs, stdenv, lib, perlPackages, makeWrapper, sources ? import ./nix/sources.nix }:
+{
+  pkgs ? import <nixpkgs> {},
+  stdenv ? pkgs.stdenv,
+  lib ? pkgs.lib,
+  perlPackages ? pkgs.perlPackages,
+  wrapGAppsHook ? pkgs.wrapGAppsHook,
+  gmb ? null,
+  ...
+}:
 let
-  gm = sources.gmusicbrowser;
+  gmbData = 
+    let
+      flakeLock = builtins.fromJSON (builtins.readFile ./flake.lock);
+      gmbLock = flakeLock.nodes.gmb.locked;
+      outPath = builtins.fetchGit {
+        url = "git@github.com:${gmbLock.owner}/${gmbLock.repo}.git";
+        rev = gmbLock.rev;
+      };
+      info = gmbLock // { inherit outPath; };
+    in if builtins.isAttrs gmb  then gmb else info;
   perlDeps = with perlPackages; [
     perl
     Cairo
+    CairoGObject
     Pango
-    Gtk2
+    Gtk3
     Glib
+    GlibObjectIntrospection
     LocaleGettext
     NetDBus
     XMLTwig
     XMLParser
+    HTMLParser
   ];
 in stdenv.mkDerivation {
   pname = "gmusicbrowser";
-  src = gm.outPath;
-  version = gm.version;
-  meta.branch = gm.branch;
-  meta.homepage = gm.homepage;
-  meta.description = gm.description;
+  src = gmbData.outPath;
+  version = builtins.substring 0 7 gmbData.rev;
+  meta.branch = "master";
+  meta.homepage = "https://gmusicbrowser.org/";
+  meta.description = "jukebox for large collections of music";
   meta.license = lib.licenses.gpl3;
   meta.platforms = lib.platforms.all;
-  nativeBuildInputs = [ makeWrapper ];
+  nativeBuildInputs = [ wrapGAppsHook ];
   buildInputs = with pkgs; [
     pandoc
     gettext
     discount
+    gtk3
+    gst_all_1.gstreamer
+    gst_all_1.gst-plugins-base
+    gst_all_1.gst-plugins-good
+    gst_all_1.gst-plugins-bad
+    gst_all_1.gst-plugins-ugly
+    gst_all_1.gst-libav
   ] ++ perlDeps;
-  preBuild = ''
-  substituteInPlace Makefile --replace usr $out
-  '';
-  postInstall = ''
-    wrapProgram "$out/bin/gmusicbrowser" \
+  preFixup = ''
+    gappsWrapperArgs+=(
       --prefix PERL5LIB : ${perlPackages.makePerlPath perlDeps}
+    )
+  '';
+  preBuild = ''
+    substituteInPlace Makefile --replace usr $out
   '';
 }
